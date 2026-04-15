@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audit-agent"
-version = "0.1.0"
-description = "Mandatory pre-planning auditor for AI coding agents — produces AUDIT.md via 11-step protocol"
+version = "0.2.0"
+description = "Audit + Plan for AI coding agents — produces AUDIT.md and PLAN.md via audit-informed story decomposition"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [{name = "ForgeGod Contributors"}]

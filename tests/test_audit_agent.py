@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 
 from audit_agent.core.audit_agent import AuditAgent
 from audit_agent.core.audit_config import AuditConfig

@@ -8,9 +8,10 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .audit_config import AuditConfig
-from .audit_result import AuditResult
+from .audit_config import AuditConfig, PlanConfig
+from .audit_result import AuditResult, PlanResult
 from .audit_runner import run_audit
+from .plan_runner import run_plan
 
 logger = logging.getLogger("audit_agent")
 
@@ -106,6 +107,42 @@ class AuditAgent:
             logger.info("AUDIT.md is current, skipping re-run")
             return None
         return await self.run()
+
+    async def run_plan(self, task: str) -> PlanResult:
+        """Run audit then plan pipeline.
+
+        If AUDIT.md is current, loads it and skips re-audit.
+        If AUDIT.md is stale or missing, runs audit first.
+        Then generates PLAN.md from the task using audit findings.
+
+        Args:
+            task: The natural-language task to decompose into stories.
+
+        Returns:
+            PlanResult with stories, guardrails, and readiness.
+        """
+        # Run audit (or load existing)
+        if self.is_stale():
+            self.result = await run_audit(self.config)
+        elif self.result is None:
+            existing = self.load_existing()
+            if existing is None:
+                self.result = await run_audit(self.config)
+            else:
+                self.result = existing
+
+        if self.result is None:
+            raise RuntimeError("No audit result available and could not run audit.")
+
+        # Run planning
+        if self.config.plan is None:
+            self.config.plan = PlanConfig(enabled=True, task=task)
+        else:
+            self.config.plan.task = task
+            self.config.plan.enabled = True
+
+        plan_result = await run_plan(self.result, task, self.config)
+        return plan_result
 
 
 # ── Commit counting ──────────────────────────────────────────────────────────

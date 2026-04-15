@@ -9,10 +9,26 @@
 | Context | Where this goes |
 |---|---|
 | **ForgeGod** | `.forgegod/skills/audit-agent/SKILL.md` — loaded as a skill via `forgegod/tools/skills.py` (skill name: `audit-agent`) |
-| **ForgeGod AGENTS.md** | Add `## audit-agent` section with trigger rule: *"Run audit-agent before planning any story"* |
-| **Standalone** | Feed as `system` in any OpenAI-compatible API call to `minimax/minimax-m2.7-highspeed` |
+| **ForgeGod AGENTS.md** | Add `## audit-agent` section with trigger rule: *"Run audit-agent before planning any story or loop"* |
+| **Standalone** | `audit run` for audit-only; `audit plan "task"` for audit+plan pipeline |
 | **Claude Code MCP** | `mcp__audit__run` — trigger on repo open or on demand |
 | **CI gate** | Run as pre-plan step before `forgegod plan` or before any `forgegod loop` |
+
+## AUDIT + PLAN MODE
+
+audit-agent supports two modes:
+
+1. **Audit-only** (`audit run`) — produces AUDIT.md via the 11-step protocol. Gate for `ready_to_plan`.
+2. **Audit + Plan** (`audit plan "task"`) — runs audit, then decomposes `task` into ordered, independently-executable stories using the audit's risk map, dependency graph, guardrails, and effort level. Produces PLAN.md.
+
+The plan mode is the primary entry point for new repositories:
+```bash
+audit plan "add user authentication"           # audit → plan
+audit plan "build REST API" --reviewer zai:glm-5  # with adversarial review
+audit plan "migrate to TypeScript" --no-review     # skip review step
+```
+
+audit-agent is the **gate AND the planner** — it has full codebase knowledge from the 11-step audit and uses it to produce risk-aware, dependency-ordered stories with embedded verification commands.
 
 ---
 

@@ -7,6 +7,25 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 
+class PlanConfig(BaseModel):
+    """Configuration for the planning phase (runs after audit)."""
+
+    enabled: bool = Field(default=False)
+    output_path: Path = Field(default_factory=lambda: Path(".forgegod/PLAN.md"))
+    task: str = Field(default="")
+    # Reviewer model for adversarial plan review (optional)
+    reviewer_model: str | None = Field(default=None)
+    # Auto-review the plan with a second model before writing
+    auto_review: bool = Field(default=True)
+    # Max stories to generate
+    max_stories: int = Field(default=20)
+    # Temperature for planning (lower = more deterministic)
+    temperature: float = Field(default=0.3)
+    # Temperature for reviewer (slightly higher for critique)
+    review_temperature: float = Field(default=0.4)
+    max_tokens: int = Field(default=8192)
+
+
 class AuditConfig(BaseModel):
     """Configuration for audit-agent runs."""
 
@@ -31,6 +50,9 @@ class AuditConfig(BaseModel):
     azure_api_key: str | None = Field(default=None)
     azure_base_url: str | None = Field(default=None)
     azure_api_version: str = Field(default="2024-02-01")
+
+    # Planning configuration (None = planning disabled)
+    plan: PlanConfig | None = Field(default=None)
 
     def model_specs(self) -> list[tuple[str, str]]:
         """Return ordered (provider, model) pairs to try.

@@ -8,12 +8,12 @@ from pathlib import Path
 
 import typer
 
-from audit_agent.core.agent import AuditAgent
-from audit_agent.core.config import AuditConfig
+from audit_agent.core.audit_agent import AuditAgent
+from audit_agent.core.audit_config import AuditConfig, PlanConfig
 
 app = typer.Typer(
     name="audit",
-    help="Mandatory pre-planning auditor — produces AUDIT.md via 11-step protocol.",
+    help="Audit + Plan — mandatory pre-planning auditor and story planner.",
     add_completion=False,
 )
 
@@ -140,9 +140,113 @@ def diff(
     typer.echo(f"  High-risk modules: {len(existing.high_risk_modules)}")
 
 
+@app.command()
+def plan(
+    task: str = typer.Argument(
+        ...,
+        help="Task to decompose into stories (e.g. 'add user authentication').",
+    ),
+    repo: str | None = typer.Option(
+        None,
+        "--repo", "-r",
+        help="Path to repository. Defaults to current directory.",
+    ),
+    output: str | None = typer.Option(
+        None,
+        "--output", "-o",
+        help="Output path for PLAN.md (default: .forgegod/PLAN.md)",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model", "-m",
+        help="Model for planning (e.g. minimax/minimax-m2.7-highspeed)",
+    ),
+    reviewer: str | None = typer.Option(
+        None,
+        "--reviewer", "-R",
+        help="Reviewer model for adversarial plan review (optional)",
+    ),
+    no_review: bool = typer.Option(
+        False,
+        "--no-review",
+        help="Skip adversarial plan review step",
+    ),
+    max_stories: int = typer.Option(
+        20,
+        "--max-stories",
+        help="Maximum number of stories to generate",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run audit then decompose a task into ordered implementation stories.
+
+    This runs the full 11-step audit protocol, then uses the audit findings
+    (risk map, dependency graph, guardrails, effort level) to produce
+    PLAN.md with independently-executable, verification-command-backed stories.
+
+    Example:
+        audit plan "add REST API for user management"
+        audit plan "refactor auth module" --output .forgegod/PLAN.md
+    """
+    repo_root = _resolve_repo_root(repo)
+
+    plan_config = PlanConfig(
+        enabled=True,
+        task=task,
+        output_path=Path(output) if output else None,
+        reviewer_model=reviewer,
+        auto_review=not no_review,
+        max_stories=max_stories,
+    )
+
+    config_kwargs: dict = {
+        "repo_root": repo_root,
+        "verbose": verbose,
+        "plan": plan_config,
+    }
+    if model:
+        config_kwargs["model"] = model
+
+    config = AuditConfig(**config_kwargs)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    typer.echo(f"Starting audit + plan for: {task[:60]}...")
+    typer.echo(f"  Repo: {repo_root}")
+
+    async def _run() -> None:
+        agent = AuditAgent(config)
+        plan_result = await agent.run_plan(task)
+        typer.echo(f"\nPlan complete: {plan_result.summary()}")
+        typer.echo(f"  Stories: {len(plan_result.stories)}")
+        if plan_result.guardrails:
+            typer.echo(f"  Guardrails: {len(plan_result.guardrails)}")
+        if plan_result.blockers:
+            typer.echo("\nBlockers:", err=True)
+            for b in plan_result.blockers:
+                typer.echo(f"  - {b}", err=True)
+        if not plan_result.ready_to_execute:
+            typer.echo(
+                "\nWARNING: ready_to_execute=False. Fix blockers before executing plan.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 @app.callback()
 def main() -> None:
-    """audit — Mandatory pre-planning auditor for AI coding agents."""
+    """audit — Audit + Plan for AI coding agents."""
     pass
 
 
