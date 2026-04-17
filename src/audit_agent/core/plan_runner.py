@@ -427,6 +427,27 @@ def _extract_json_block(text: str) -> dict[str, Any]:
     return {}
 
 
+def _config_with_runtime_overrides(
+    config: AuditConfig,
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> AuditConfig:
+    """Clone config with per-pass overrides for planning and review."""
+
+    updates: dict[str, Any] = {}
+    if model is not None:
+        updates["model"] = model
+    if temperature is not None:
+        updates["temperature"] = temperature
+    if max_tokens is not None:
+        updates["max_tokens"] = max_tokens
+    if not updates:
+        return config
+    return config.model_copy(update=updates)
+
+
 def _parse_stories_from_json(json_block: dict[str, Any]) -> list[PlanStory]:
     """Parse stories from the plan JSON block."""
     plan_agent = json_block.get("plan_agent", {})
@@ -507,7 +528,12 @@ async def run_plan(
         "You ALWAYS respect guardrails and risk maps."
     )
 
-    llm_output = await call_llm(system_prompt, prompt, config)
+    planning_config = _config_with_runtime_overrides(
+        config,
+        temperature=plan_config.temperature,
+        max_tokens=plan_config.max_tokens,
+    )
+    llm_output = await call_llm(system_prompt, prompt, planning_config)
 
     # ── Phase 2: Parse plan ───────────────────────────────────────────────
     json_block = _extract_json_block(llm_output)
@@ -530,7 +556,13 @@ async def run_plan(
         )
 
         review_prompt = _build_review_prompt(full_plan_md, task)
-        review_output = await call_llm(review_system, review_prompt, config)
+        review_config = _config_with_runtime_overrides(
+            config,
+            model=plan_config.reviewer_model,
+            temperature=plan_config.review_temperature,
+            max_tokens=plan_config.max_tokens,
+        )
+        review_output = await call_llm(review_system, review_prompt, review_config)
 
         # Append review to plan markdown
         full_plan_md += "\n\n---\n\n## Plan Review\n" + review_output.strip()

@@ -141,6 +141,248 @@ def diff(
 
 
 @app.command()
+def delta(
+    repo: str | None = typer.Argument(
+        None,
+        help="Path to repository. Defaults to current directory.",
+    ),
+    task: str = typer.Option(
+        "",
+        "--task",
+        help="Optional task that may touch high-risk modules.",
+    ),
+    review_feedback: str = typer.Option(
+        "",
+        "--review-feedback",
+        help="Reviewer feedback that should trigger troubleshooting.",
+    ),
+    failure_details: str = typer.Option(
+        "",
+        "--failure-details",
+        help="Execution failure details that should trigger troubleshooting.",
+    ),
+    changed_files: list[str] = typer.Option(
+        None,
+        "--changed-file",
+        help="Explicit changed file(s) to evaluate instead of git-detected changes.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run a targeted delta audit when planning conditions changed."""
+    repo_root = _resolve_repo_root(repo)
+    config = AuditConfig(repo_root=repo_root, verbose=verbose)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    async def _run() -> None:
+        agent = AuditAgent(config)
+        result = await agent.run_delta(
+            task=task,
+            review_feedback=review_feedback,
+            failure_details=failure_details,
+            changed_files=changed_files or None,
+        )
+        if result is None:
+            typer.echo("No delta-audit triggers detected. Current audit still applies.")
+            return
+        typer.echo(f"Delta audit complete: {result.summary()}")
+        if result.blocker_updates:
+            typer.echo("Blocker updates:", err=True)
+            for blocker in result.blocker_updates:
+                typer.echo(f"  - {blocker}", err=True)
+        if result.full_reaudit_required:
+            typer.echo(
+                "Full re-audit required before planning continues.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command()
+def security(
+    repo: str | None = typer.Argument(
+        None,
+        help="Path to repository. Defaults to current directory.",
+    ),
+    changed_files: list[str] = typer.Option(
+        None,
+        "--changed-file",
+        help="Limit the security audit to explicit changed file(s).",
+    ),
+    semgrep: bool = typer.Option(
+        False,
+        "--semgrep",
+        help="Use Semgrep when installed for an additional security pass.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run the security specialist audit surface."""
+    repo_root = _resolve_repo_root(repo)
+    config = AuditConfig(repo_root=repo_root, verbose=verbose)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    async def _run() -> None:
+        agent = AuditAgent(config)
+        result = await agent.run_security_audit(
+            changed_files=changed_files or None,
+            use_semgrep=semgrep,
+        )
+        typer.echo(f"Security audit complete: {result.summary()}")
+        if result.blockers:
+            typer.echo("Blockers:", err=True)
+            for blocker in result.blockers:
+                typer.echo(f"  - {blocker}", err=True)
+            raise SystemExit(1)
+
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command()
+def architecture(
+    repo: str | None = typer.Argument(
+        None,
+        help="Path to repository. Defaults to current directory.",
+    ),
+    changed_files: list[str] = typer.Option(
+        None,
+        "--changed-file",
+        help="Limit the architecture audit to explicit changed file(s).",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run the architecture specialist audit surface."""
+    repo_root = _resolve_repo_root(repo)
+    config = AuditConfig(repo_root=repo_root, verbose=verbose)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    async def _run() -> None:
+        agent = AuditAgent(config)
+        result = await agent.run_architecture_audit(changed_files=changed_files or None)
+        typer.echo(f"Architecture audit complete: {result.summary()}")
+        if result.blockers:
+            typer.echo("Blockers:", err=True)
+            for blocker in result.blockers:
+                typer.echo(f"  - {blocker}", err=True)
+            raise SystemExit(1)
+
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("plan-risk")
+def plan_risk(
+    repo: str | None = typer.Argument(
+        None,
+        help="Path to repository. Defaults to current directory.",
+    ),
+    task: str = typer.Option(
+        "",
+        "--task",
+        help="Optional task label to associate with the existing PLAN.md.",
+    ),
+    plan_path: str | None = typer.Option(
+        None,
+        "--plan",
+        help="Path to PLAN.md (default: .forgegod/PLAN.md under the repo).",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run the plan-risk specialist over an existing PLAN.md."""
+    repo_root = _resolve_repo_root(repo)
+    config = AuditConfig(repo_root=repo_root, verbose=verbose)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    async def _run() -> None:
+        agent = AuditAgent(config)
+        result = await agent.run_plan_risk_audit(
+            task=task,
+            plan_path=Path(plan_path) if plan_path else None,
+        )
+        typer.echo(f"Plan-risk audit complete: {result.summary()}")
+        if result.blockers:
+            typer.echo("Blockers:", err=True)
+            for blocker in result.blockers:
+                typer.echo(f"  - {blocker}", err=True)
+            raise SystemExit(1)
+
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command("eval")
+def eval_command(
+    repo: str | None = typer.Argument(
+        None,
+        help="Path to repository. Defaults to current directory.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose output",
+    ),
+) -> None:
+    """Run the offline audit eval harness."""
+    repo_root = _resolve_repo_root(repo)
+    config = AuditConfig(repo_root=repo_root, verbose=verbose)
+
+    if verbose:
+        log.setLevel(logging.DEBUG)
+
+    try:
+        result = AuditAgent(config).run_evals()
+        typer.echo(f"Eval harness complete: {result.summary()}")
+        if result.failed:
+            raise SystemExit(1)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise SystemExit(1)
+
+
+@app.command()
 def plan(
     task: str = typer.Argument(
         ...,
@@ -171,6 +413,26 @@ def plan(
         "--no-review",
         help="Skip adversarial plan review step",
     ),
+    review_feedback: str = typer.Option(
+        "",
+        "--review-feedback",
+        help="Reviewer feedback that should trigger a delta audit before planning.",
+    ),
+    failure_details: str = typer.Option(
+        "",
+        "--failure-details",
+        help="Execution failure details that should trigger a delta audit before planning.",
+    ),
+    changed_files: list[str] = typer.Option(
+        None,
+        "--changed-file",
+        help="Explicit changed file(s) to evaluate instead of git-detected changes.",
+    ),
+    skip_delta_audit: bool = typer.Option(
+        False,
+        "--skip-delta-audit",
+        help="Skip automatic delta-audit checks before planning.",
+    ),
     max_stories: int = typer.Option(
         20,
         "--max-stories",
@@ -194,14 +456,17 @@ def plan(
     """
     repo_root = _resolve_repo_root(repo)
 
-    plan_config = PlanConfig(
-        enabled=True,
-        task=task,
-        output_path=Path(output) if output else None,
-        reviewer_model=reviewer,
-        auto_review=not no_review,
-        max_stories=max_stories,
-    )
+    plan_kwargs: dict = {
+        "enabled": True,
+        "task": task,
+        "reviewer_model": reviewer,
+        "auto_review": not no_review,
+        "max_stories": max_stories,
+    }
+    if output:
+        plan_kwargs["output_path"] = Path(output)
+
+    plan_config = PlanConfig(**plan_kwargs)
 
     config_kwargs: dict = {
         "repo_root": repo_root,
@@ -221,9 +486,22 @@ def plan(
 
     async def _run() -> None:
         agent = AuditAgent(config)
-        plan_result = await agent.run_plan(task)
+        plan_result = await agent.run_plan(
+            task,
+            review_feedback=review_feedback,
+            failure_details=failure_details,
+            changed_files=changed_files or None,
+            skip_delta_audit=skip_delta_audit,
+        )
         typer.echo(f"\nPlan complete: {plan_result.summary()}")
         typer.echo(f"  Stories: {len(plan_result.stories)}")
+        if plan_result.delta_audit is not None:
+            typer.echo(
+                f"  Delta audit: {plan_result.delta_audit.recommended_action} "
+                f"({len(plan_result.delta_audit.triggers)} trigger(s))"
+            )
+        if plan_result.specialist_audits:
+            typer.echo(f"  Specialist audits: {len(plan_result.specialist_audits)}")
         if plan_result.guardrails:
             typer.echo(f"  Guardrails: {len(plan_result.guardrails)}")
         if plan_result.blockers:

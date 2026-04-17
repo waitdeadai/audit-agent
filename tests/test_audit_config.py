@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from audit_agent.core.audit_config import AuditConfig
+from audit_agent.core.audit_config import AuditConfig, PlanConfig
 
 
 def test_audit_config_defaults():
     """AuditConfig has sensible defaults."""
     config = AuditConfig()
 
-    assert config.repo_root == Path.cwd()
-    assert config.output_path == Path(".forgegod/AUDIT.md")
+    assert config.repo_root == Path.cwd().resolve()
+    assert config.output_path == Path.cwd().resolve() / ".forgegod" / "AUDIT.md"
     assert config.model == "minimax/minimax-m2.7-highspeed"
     assert config.temperature == 0.2
     assert config.top_p == 0.9
@@ -34,8 +34,8 @@ def test_audit_config_custom_values():
         verbose=True,
     )
 
-    assert config.repo_root == Path("/tmp/my-repo")
-    assert config.output_path == Path("/tmp/my-repo/AUDIT.md")
+    assert config.repo_root == Path("/tmp/my-repo").resolve()
+    assert config.output_path == Path("/tmp/my-repo/AUDIT.md").resolve()
     assert config.model == "openai/gpt-4.4"
     assert config.temperature == 0.5
     assert config.top_p == 0.95
@@ -89,4 +89,18 @@ def test_audit_config_is_pydantic_model():
         "model": "minimax/test",
     })
     assert config.model == "minimax/test"
-    assert config.repo_root == Path("/tmp/test")
+    assert config.repo_root == Path("/tmp/test").resolve()
+
+
+def test_audit_config_resolves_default_output_path_to_repo_root(tmp_path):
+    """Default audit output lives under the target repository, not cwd."""
+    config = AuditConfig(repo_root=tmp_path)
+    assert config.output_path == tmp_path.resolve() / ".forgegod" / "AUDIT.md"
+
+
+def test_audit_config_resolves_plan_output_to_repo_root(tmp_path):
+    """Nested plan config output path is also repo-relative."""
+    plan = PlanConfig(enabled=True, task="ship feature")
+    config = AuditConfig(repo_root=tmp_path, plan=plan)
+    assert config.plan is not None
+    assert config.plan.output_path == tmp_path.resolve() / ".forgegod" / "PLAN.md"

@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import json
 
-from audit_agent.core.audit_result import AuditFinding, AuditResult
+from audit_agent.core.audit_result import (
+    AuditFinding,
+    AuditResult,
+    DeltaAuditResult,
+    DeltaTrigger,
+    EvalCaseResult,
+    EvalRunResult,
+    PlanResult,
+    SpecialistAuditResult,
+)
 
 
 def test_audit_result_to_json_block():
@@ -128,3 +137,85 @@ def test_audit_result_with_findings():
     assert len(result.findings) == 2
     assert result.findings[0].severity == "CRITICAL"
     assert result.findings[1].severity == "WARNING"
+
+
+def test_delta_audit_result_to_json_block():
+    """DeltaAuditResult serializes trigger metadata."""
+    result = DeltaAuditResult(
+        repo="demo",
+        task="touch auth",
+        triggers=[
+            DeltaTrigger(
+                reason="high_risk_plan",
+                summary="Task touches auth",
+                relevant_modules=["src/auth.py"],
+            )
+        ],
+        changed_files=["src/auth.py"],
+        blocker_updates=["Review auth boundary"],
+        relevant_modules=["src/auth.py"],
+        recommended_action="run_delta_audit",
+    )
+
+    parsed = json.loads(result.to_json_block())
+    assert parsed["delta_audit"]["repo"] == "demo"
+    assert parsed["delta_audit"]["triggers"][0]["reason"] == "high_risk_plan"
+
+
+def test_plan_result_json_includes_delta_audit_summary():
+    """PlanResult exposes delta-audit summary when available."""
+    delta = DeltaAuditResult(repo="demo", recommended_action="full_reaudit", full_reaudit_required=True)
+    specialist = SpecialistAuditResult(kind="plan-risk", repo="demo", ready=False, blockers=["missing tests"])
+    result = PlanResult(
+        repo="demo",
+        task="ship",
+        delta_audit=delta,
+        specialist_audits=[specialist],
+    )
+
+    parsed = json.loads(result.to_json_block())
+    assert parsed["plan_agent"]["delta_audit"]["recommended_action"] == "full_reaudit"
+    assert parsed["plan_agent"]["specialist_audits"][0]["kind"] == "plan-risk"
+
+
+def test_specialist_audit_result_to_json_block():
+    """SpecialistAuditResult serializes findings and metadata."""
+    result = SpecialistAuditResult(
+        kind="security",
+        repo="demo",
+        findings=[
+            AuditFinding(
+                severity="CRITICAL",
+                category="security",
+                file="config.py",
+                line=3,
+                description="Hardcoded secret",
+            )
+        ],
+        blockers=["config.py: Hardcoded secret"],
+        ready=False,
+        metadata={"semgrep_status": "ok"},
+    )
+
+    parsed = json.loads(result.to_json_block())
+    assert parsed["specialist_audit"]["kind"] == "security"
+    assert parsed["specialist_audit"]["findings"][0]["file"] == "config.py"
+    assert parsed["specialist_audit"]["metadata"]["semgrep_status"] == "ok"
+
+
+def test_eval_run_result_to_json_block():
+    """EvalRunResult reports cases and counts."""
+    result = EvalRunResult(
+        suite="audit-agent-offline",
+        passed=2,
+        failed=1,
+        cases=[
+            EvalCaseResult(name="repo_snapshot_correctness", passed=True, detail="ok"),
+            EvalCaseResult(name="delta_audit_trigger_correctness", passed=False, detail="bad"),
+        ],
+    )
+
+    parsed = json.loads(result.to_json_block())
+    assert parsed["audit_eval"]["suite"] == "audit-agent-offline"
+    assert parsed["audit_eval"]["passed"] == 2
+    assert parsed["audit_eval"]["cases"][1]["name"] == "delta_audit_trigger_correctness"

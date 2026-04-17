@@ -57,21 +57,21 @@ def scan_effort_requirements(repo_root: Path) -> dict[str, Any]:
 
 def _mandatory_test_modules(files: list[Path]) -> list[str]:
     """Modules that MUST have test verification before DONE."""
-    return [
-        "router" in str(f) and f.name.replace("_", "") for f in files
-    ]
-    # Simplified: just return known high-risk module names
     risky_names = {"router", "agent", "loop", "security", "auth"}
-    return [n for n in risky_names if any(n in f.name.lower() for f in files)]
+    modules: list[str] = []
+    for f in files:
+        if any(risky in f.name.lower() for risky in risky_names):
+            modules.append(f.name)
+    return _dedupe(modules)
 
 
 def _no_single_pass_modules(files: list[Path]) -> list[str]:
     """Modules where single-pass completion is never acceptable."""
     large_files = [f for f in files if f.name.endswith(".py")]
     big = [str(f.name) for f in large_files if _line_count(f) > 800]
-    return big
     risky_names = {"router", "agent", "evals", "cli"}
-    return [str(f.name) for f in files if any(n in f.name.lower() for n in risky_names)]
+    risky = [str(f.name) for f in files if any(n in f.name.lower() for n in risky_names)]
+    return _dedupe(big + risky)
 
 
 def _line_count(f: Path) -> int:
@@ -79,3 +79,14 @@ def _line_count(f: Path) -> int:
         return f.read_text(errors="replace").count("\n")
     except OSError:
         return 0
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        output.append(value)
+    return output

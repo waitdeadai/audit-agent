@@ -18,7 +18,7 @@ def scan_architecture(repo_root: Path) -> dict[str, Any]:
         - ascii_diagram (str)
     """
     py_files = _all_py_files(repo_root)
-    imports_graph = _build_import_graph(py_files)
+    imports_graph = _build_import_graph(py_files, repo_root)
     structure_type = _detect_structure(imports_graph, py_files)
     god_modules = _find_god_modules(py_files)
     circular = _find_circular_imports(imports_graph)
@@ -43,14 +43,14 @@ def _all_py_files(repo_root: Path) -> list[Path]:
     return files
 
 
-def _build_import_graph(files: list[Path]) -> dict[str, set[str]]:
+def _build_import_graph(files: list[Path], repo_root: Path) -> dict[str, set[str]]:
     """Map each module to the set of modules it imports."""
     graph: dict[str, set[str]] = {}
     for f in files:
         try:
             content = f.read_text(errors="replace")
             tree = ast.parse(content)
-            module_name = _module_name(f)
+            module_name = _module_name(f, repo_root)
             graph[module_name] = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
@@ -63,15 +63,20 @@ def _build_import_graph(files: list[Path]) -> dict[str, set[str]]:
     return graph
 
 
-def _module_name(f: Path) -> str:
-    parts = list(f.parts)
-    # Remove common root dirs
+def _module_name(f: Path, repo_root: Path) -> str:
+    try:
+        rel_path = f.relative_to(repo_root)
+    except ValueError:
+        rel_path = f
+    parts = list(rel_path.parts)
     for root in ["src", "lib", "packages"]:
         if root in parts:
             idx = parts.index(root)
             parts = parts[idx + 1:]
-    if parts[-1] == "__init__.py":
+    if parts and parts[-1] == "__init__.py":
         parts = parts[:-1]
+    if not parts:
+        return f.stem
     return ".".join(parts).replace(".py", "")
 
 

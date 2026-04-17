@@ -1,196 +1,151 @@
 # audit-agent
 
-**Mandatory pre-planning auditor for the WAITDEAD system** — produces `AUDIT.md` via an 11-step protocol before any code change planning begins.
+`audit-agent` is the pre-planning auditor for ForgeGod. It enters a repository before execution, builds deterministic evidence from scanners and repo instructions, synthesizes `AUDIT.md`, and blocks planning when the repo state is unsafe or unclear.
 
-audit-agent is the gate that runs before all other agents in the ForgeGod ecosystem. No story can be planned. No PR can be opened. No ForgeGod loop can execute until `AUDIT.md` exists and is current.
+The runtime is now hybrid and evidence-driven:
 
----
+- deterministic scanners first
+- repo instruction ingestion and repo map generation
+- LLM synthesis after evidence collection
+- targeted delta-audits when planning conditions change
+- specialist audit surfaces for security, architecture, and plan risk
+- offline eval harness for auditor quality checks
 
-## The 4-Agent Ecosystem
-
-```
-WAITDEAD SYSTEM — AUDIT · PLAN · SCALE
-
-┌─────────────────────────────────────────────────────────┐
-│                    NEW REPO / FIRST RUN                  │
-│                           │                              │
-│                    ┌──────▼──────┐                       │
-│                    │ audit-agent  │  ← YOU ARE HERE       │
-│                    └──────┬──────┘                       │
-│                    AUDIT.md produced                     │
-│                           │                              │
-│              ┌────────────▼────────────┐                 │
-│              │   ForgeGod Ralph Loop   │                 │
-│              │   reads AUDIT.md        │                 │
-│              │   plans stories         │                 │
-│              └────────────┬────────────┘                 │
-│                           │                              │
-│              ┌────────────▼────────────┐                 │
-│              │  per-story execution    │                 │
-│              │  taste-agent reviews    │  (did it right?)│
-│              │  effort-agent checks    │  (did the work?)│
-│              └─────────────────────────┘                 │
-└─────────────────────────────────────────────────────────┘
-```
-
-| Agent | Role | Answers |
-|---|---|---|
-| **audit-agent** | Pre-planning auditor | "What is this codebase? Where are the risks?" |
-| **taste-agent** | Output reviewer | "Did the output match the vision?" |
-| **effort-agent** | Thoroughness checker | "Did the agent do the work thoroughly?" |
-| **ForgeGod** | Execution engine | "Did the code ship?" |
-
----
-
-## Quick Start
+## Install
 
 ```bash
 pip install audit-agent
-audit run .
 ```
 
-This produces `AUDIT.md` in the current directory using the 11-step protocol.
+For development:
 
 ```bash
-audit --help
+git clone https://github.com/waitdeadai/audit-agent.git
+cd audit-agent
+pip install -e ".[dev]"
 ```
 
-```
- Usage: audit [OPTIONS] COMMAND [ARGS]
+## CLI
 
- Mandatory pre-planning auditor — produces AUDIT.md via 11-step protocol
-
- Options:
-   --install-completion  Install completion for the current shell.
-   --show-completion     Show the completion for the current shell.
-   --help               Show this message and exit.
-
- Commands:
-   run      Audit a repository
-   status   Check if AUDIT.md exists and is current
-   diff     Show changes since last audit
+```bash
+audit run .
+audit status .
+audit diff .
+audit delta . --task "refactor payment pipeline"
+audit security . --semgrep
+audit architecture .
+audit plan "add auth flow"
+audit plan-risk .
+audit eval .
 ```
 
----
+## Artifacts
+
+Base audit:
+
+- `.forgegod/AUDIT.md`
+- `.forgegod/AUDIT.json`
+- `.forgegod/AUDIT_EVIDENCE.json`
+
+Delta audit:
+
+- `.forgegod/AUDIT_DELTA.md`
+- `.forgegod/AUDIT_DELTA.json`
+
+Specialist audits:
+
+- `.forgegod/SECURITY_AUDIT.md`
+- `.forgegod/SECURITY_AUDIT.json`
+- `.forgegod/ARCHITECTURE_AUDIT.md`
+- `.forgegod/ARCHITECTURE_AUDIT.json`
+- `.forgegod/PLAN_RISK_AUDIT.md`
+- `.forgegod/PLAN_RISK_AUDIT.json`
+
+Eval harness:
+
+- `.forgegod/AUDIT_EVALS.md`
+- `.forgegod/AUDIT_EVALS.json`
+
+## What It Checks
+
+The hybrid runtime collects evidence from:
+
+- repo snapshot
+- entry points
+- architecture map
+- dependency surface
+- health indicators
+- test surface
+- security findings
+- risk map
+- taste preflight
+- effort requirements
+- planning constraints
+
+It also ingests repo-local instructions from files like:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `GEMINI.md`
+- `.github/copilot-instructions.md`
+- `.github/instructions/*.instructions.md`
+- `CONTRIBUTING.md`
+- `docs/ARCHITECTURE.md`
+- `docs/RUNBOOK.md`
+- `docs/DESIGN.md`
+
+## Specialist Surfaces
+
+`audit security`
+- deterministic security scan
+- optional Semgrep-backed pass when `semgrep` is installed
+
+`audit architecture`
+- circular import detection
+- god module surfacing
+- high-risk module review
+
+`audit plan-risk`
+- checks story dependency validity
+- blocks high-risk stories without verification commands
+- adds guardrails before execution
+
+`audit plan`
+- runs delta checks automatically unless `--skip-delta-audit` is set
+- runs plan-risk review before returning the plan surface
+
+## Eval Harness
+
+`audit eval` runs an offline deterministic suite that checks:
+
+- repo snapshot correctness
+- instruction ingestion correctness
+- blocker detection precision
+- high-risk module ranking quality
+- safest-start recommendations
+- delta trigger correctness
+- false-positive rate on small repos
+
+This gives you a local quality signal for the auditor itself without requiring live model calls.
 
 ## ForgeGod Integration
 
-### Install as a ForgeGod Skill
+Typical flow:
 
-```bash
-# Copy PROMPT.md to the skill directory
-mkdir -p .forgegod/skills/audit-agent
-cp src/audit_agent/PROMPT.md .forgegod/skills/audit-agent/SKILL.md
-```
+1. `audit run` when entering a repo or when the current audit is stale
+2. `audit delta` before risky planning changes or after bad reviews
+3. `audit plan` to generate a guarded implementation plan
+4. specialist surfaces on demand for targeted troubleshooting
 
-Then add to your `AGENTS.md`:
-
-```markdown
-## audit-agent
-
-**Trigger:** Run before planning any story or loop. Run when entering a repo with no current AUDIT.md.
-
-**Model:** minimax/minimax-m2.7-highspeed
-**Skill:** `.forgegod/skills/audit-agent/SKILL.md` (invoke via `load_skill("audit-agent")`)
-**Output:** `.forgegod/AUDIT.md`
-
-**Rules:**
-- Ralph Loop must check for `.forgegod/AUDIT.md` before spawning any story agent.
-- If AUDIT.md is older than 20 commits, re-run audit-agent before planning.
-- If audit sets `ready_to_plan: false`, halt and surface blockers to human.
-- AUDIT.md is read-only for all other agents — only audit-agent writes it.
-```
-
-### config.toml Integration
-
-```toml
-[audit]
-enabled = true
-model = "minimax/minimax-m2.7-highspeed"
-skill_path = ".forgegod/skills/audit-agent/SKILL.md"
-output_path = ".forgegod/AUDIT.md"
-auto_trigger = true
-stale_after_commits = 20
-block_loop_if_stale = true
-block_loop_if_ready_to_plan_false = true
-```
-
----
-
-## Configuration
-
-`AuditConfig` fields:
-
-| Field | Default | Description |
-|---|---|---|
-| `model` | `minimax/minimax-m2.7-highspeed` | Model string for audit |
-| `temperature` | `0.2` | Deterministic for audit |
-| `top_p` | `0.9` | Nucleus sampling |
-| `max_tokens` | `8000` | Max audit output |
-| `output_path` | `AUDIT.md` | Where to write AUDIT.md |
-| `stale_after_commits` | `20` | Re-trigger after N commits |
-| `api_key` | env `MINIMAX_API_KEY` | API key for model provider |
-
----
-
-## CI Integration
-
-### GitHub Actions Pre-Plan Gate
-
-```yaml
-name: Audit Gate
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run audit-agent
-        run: |
-          pip install audit-agent
-          audit run .
-
-      - name: Upload AUDIT.md
-        uses: actions/upload-artifact@v4
-        with:
-          name: audit-report
-          path: AUDIT.md
-
-      - name: Check if ready to plan
-        run: |
-          if grep '"ready_to_plan": false' AUDIT.md; then
-            echo "::error:: Audit blocked planning. Fix blockers before proceeding."
-            exit 1
-          fi
-```
-
----
+`AUDIT.md` and the machine-readable artifacts are intended to be consumed by ForgeGod before code execution.
 
 ## Documentation
 
-- [Getting Started](docs/GETTING_STARTED.md) — Installation, quick start, ForgeGod setup, MCP, CI
-- [Protocol Reference](docs/PROTOCOL.md) — The 11-step audit protocol in detail
-- [Integration Guide](docs/INTEGRATION.md) — ForgeGod, taste-agent, effort-agent, Claude Code MCP, CI/CD
-
----
+- [Getting Started](docs/GETTING_STARTED.md)
+- [Protocol Reference](docs/PROTOCOL.md)
+- [Integration Guide](docs/INTEGRATION.md)
+- [2026 Research Plan](docs/WEB_RESEARCH_2026-04-17_AUDIT_AGENT_EVOLUTION.md)
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
-
----
-
-## Links
-
-- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
-- [docs/PROTOCOL.md](docs/PROTOCOL.md)
-- [docs/INTEGRATION.md](docs/INTEGRATION.md)
+Apache-2.0

@@ -1,5 +1,6 @@
 """Scanners — 11-step audit protocol implementations."""
 
+from .repo_snapshot import scan_repo_snapshot
 from .entry_points import scan_entry_points
 from .architecture import scan_architecture
 from .dependencies import scan_dependencies, scan_internal_deps
@@ -12,6 +13,7 @@ from .effort_requirements import scan_effort_requirements
 from .planning_constraints import scan_planning_constraints
 
 __all__ = [
+    "scan_repo_snapshot",
     "scan_entry_points",
     "scan_architecture",
     "scan_dependencies",

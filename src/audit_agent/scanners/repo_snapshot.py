@@ -35,7 +35,7 @@ def scan_repo_snapshot(repo_root: Path) -> dict[str, Any]:
     for root, _dirs, files in os.walk(repo_root):
         # Skip common non-source directories
         parts = Path(root).relative_to(repo_root).parts
-        skip = {".git", "__pycache__", "node_modules", ".venv", "venv",
+        skip = {".git", ".forgegod", "__pycache__", "node_modules", ".venv", "venv",
                 ".tox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
                 "dist", "build", ".eggs", "*.egg-info"}
         if any(p in skip for p in parts):
@@ -85,7 +85,7 @@ def scan_repo_snapshot(repo_root: Path) -> dict[str, Any]:
     # File count and line count
     file_count = 0
     line_count = 0
-    skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv",
+    skip_dirs = {".git", ".forgegod", "__pycache__", "node_modules", ".venv", "venv",
                  ".tox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
                  "dist", "build", ".eggs", "*.egg-info"}
     skip_exts = {".pyc", ".pyo", ".so", ".dll", ".dylib", ".exe", ".msi",
@@ -148,10 +148,13 @@ def scan_repo_snapshot(repo_root: Path) -> dict[str, Any]:
 
     # Test framework
     test_framework: str | None = None
-    if (repo_root / "pytest.ini").exists() or (repo_root / "pyproject.toml").exists():
-        content = (repo_root / "pyproject.toml").read_text(errors="replace")
+    pyproject_path = repo_root / "pyproject.toml"
+    if pyproject_path.exists():
+        content = pyproject_path.read_text(errors="replace")
         if "[tool.pytest" in content or "[tool:pytest]" in content:
             test_framework = "pytest"
+    if test_framework is None and (repo_root / "pytest.ini").exists():
+        test_framework = "pytest"
     if not test_framework and (repo_root / "package.json").exists():
         content = (repo_root / "package.json").read_text(errors="replace")
         if "vitest" in content:

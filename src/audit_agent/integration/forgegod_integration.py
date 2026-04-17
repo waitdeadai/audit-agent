@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
 from enum import Enum
 from pathlib import Path
+
+from audit_agent.core.audit_agent import AuditAgent
+from audit_agent.core.audit_config import AuditConfig
 
 
 class AuditStatus(Enum):
@@ -22,40 +24,13 @@ async def check_audit_status(
     if not audit_path.exists():
         return AuditStatus.MISSING
 
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-list", "--count", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return AuditStatus.STALE
-
-        total_commits = int(result.stdout.strip())
-        # Count commits since AUDIT.md was last modified (result unused, just side-effect)
-        subprocess.run(
-            ["git", "-C", str(repo_root), "log", "--oneline", "--since", "9999-01-01",
-             "--until", "2099-01-01", "--", str(audit_path)],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        # Simpler heuristic: check file modification against HEAD commit date
-        result2 = subprocess.run(
-            ["git", "-C", str(repo_root), "log", "-1", "--format=%ct", "--", str(audit_path)],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result2.returncode == 0:
-            audit_commits_ago = total_commits - int(result2.stdout.strip())
-            if audit_commits_ago > stale_after_commits:
-                return AuditStatus.STALE
-    except (subprocess.TimeoutExpired, ValueError, OSError):
-        pass
-
-    return AuditStatus.CURRENT
+    config = AuditConfig(
+        repo_root=repo_root,
+        output_path=audit_path,
+        stale_after_commits=stale_after_commits,
+    )
+    agent = AuditAgent(config)
+    return AuditStatus.STALE if agent.is_stale() else AuditStatus.CURRENT
 
 
 async def forgegod_loop_hook(
@@ -80,6 +55,13 @@ def skill_prompt(skill_path: Path | None = None) -> str:
     if skill_path is None:
         # Default: look relative to this file
         skill_path = Path(__file__).parent.parent / "PROMPT.md"
-    if not skill_path.exists():
-        return f"Error: skill file not found at {skill_path}"
-    return skill_path.read_text(encoding="utf-8", errors="replace")
+    candidates = [skill_path]
+    if skill_path.name == "PROMPT.md":
+        candidates.append(skill_path.with_name("SKILL.md"))
+    elif skill_path.name == "SKILL.md":
+        candidates.append(skill_path.with_name("PROMPT.md"))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8", errors="replace")
+    return f"Error: skill file not found at {skill_path}"

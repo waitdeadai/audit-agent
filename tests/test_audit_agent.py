@@ -126,3 +126,18 @@ Test summary
     assert result.repo == "test-repo"
     assert result.ready_to_plan is True
     assert result.effort_level == "thorough"
+
+
+async def test_run_security_audit_bootstraps_without_existing_audit(tmp_path):
+    """Security specialist can run without a prior AUDIT.md or model call."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "config.py").write_text(
+        'api_key = "123456789012345678901234"\n',
+        encoding="utf-8",
+    )
+
+    agent = AuditAgent(AuditConfig(repo_root=tmp_path))
+    result = await agent.run_security_audit()
+
+    assert result.kind == "security"
+    assert result.blockers

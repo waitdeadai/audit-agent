@@ -14,15 +14,16 @@ def scan_risk_map(repo_root: Path) -> dict[str, Any]:
         - risks (list[dict]): Module | Risk | Why | Dependencies affected
     """
     py_files = _all_modules(repo_root)
-    graph = _import_graph(py_files)
+    graph = _import_graph(py_files, repo_root)
     test_coverage = _test_coverage_map(repo_root)
 
     risks: list[dict[str, str]] = []
     for f in py_files:
-        module = _module_name(f)
-        deps = len(graph.get(module, []))
-        fan_in = sum(1 for v in graph.values() if module in v)
-        test_count = test_coverage.get(module, 0)
+        module_key = _module_key(f, repo_root)
+        module = _display_module_name(f, repo_root)
+        deps = len(graph.get(module_key, []))
+        fan_in = sum(1 for v in graph.values() if module_key in v)
+        test_count = test_coverage.get(module_key, 0) or test_coverage.get(Path(module).stem, 0)
         size = _file_size(f)
 
         if fan_in > 5 and test_count == 0:
@@ -64,13 +65,13 @@ def _all_modules(repo_root: Path) -> list[Path]:
             if not any(p in f.parts for p in skip)]
 
 
-def _import_graph(files: list[Path]) -> dict[str, set[str]]:
+def _import_graph(files: list[Path], repo_root: Path) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for f in files:
         try:
             content = f.read_text(errors="replace")
             tree = ast.parse(content)
-            mod = _module_name(f)
+            mod = _module_key(f, repo_root)
             graph[mod] = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
@@ -83,14 +84,28 @@ def _import_graph(files: list[Path]) -> dict[str, set[str]]:
     return graph
 
 
-def _module_name(f: Path) -> str:
-    parts = list(f.parts)
+def _display_module_name(f: Path, repo_root: Path) -> str:
+    try:
+        rel_path = f.relative_to(repo_root)
+    except ValueError:
+        rel_path = f
+    return rel_path.as_posix()
+
+
+def _module_key(f: Path, repo_root: Path) -> str:
+    try:
+        rel_path = f.relative_to(repo_root)
+    except ValueError:
+        rel_path = f
+    parts = list(rel_path.parts)
     for root in ["src", "lib"]:
         if root in parts:
             idx = parts.index(root)
             parts = parts[idx + 1:]
-    if parts[-1] == "__init__.py":
+    if parts and parts[-1] == "__init__.py":
         parts = parts[:-1]
+    if not parts:
+        return f.stem
     return ".".join(parts).replace(".py", "")
 
 
